@@ -1,0 +1,125 @@
+= Enumerates in Cpp forwarded to QML
+In this articles, we'll see together how you can expose enumerates types from Cpp for use in QML
+
+:toc:
+:sectnums:
+
+== Introduction
+Enums are just a type that use integers and give them a discriptive names. For instance, an enums named `ErrorValues` should contains `INFORMATION`, `WARNING`, `ERROR` in that order. That means:
+
+```cpp
+enum Error {
+    INFORMATION
+    , WARNING
+    , ERROR
+    , DEBUG
+    , MESSAGE
+};
+```
+
+If you see the above example, you will see that there is an enumerate named `Error` that contains five possible values. 
+
+IMPORTANT: By default, an enum map integer (starting at 0) until the last enumerate value.
+
+== How to expose Enums in QML
+In QML, enumerations can be defined. Enumerations are not separate type in `QML`, but are properties on their surrounding types. An enumeration value is represented as the underlying type of the enumeration. 
+
+NOTE: For most enumerations, it is safe to use either JavaScript's _Number_ type or QML's double type to store them. However, this not always work for a 64-bit integers for instance, as their range might exceeds the safe integer range of 64-bit doubles. Therefore, enumerations with the values outside the safe intergers range (-(2^53-1)) to (2^53-1) inclusive, cannot be safely used in QML. However, for enumerations with values that fit in a numeric range of a 32-bit signed integer, you can safely use the qml _int_ type as a storage.
+
+=== Example
+```json
+import QtQuick
+
+Item {
+    // refer to Text.AlignRight using an int type
+    property int enumValue: textItem.horizontalAlignment
+    signal valueEmitted(int someValue)
+    
+    Text {
+        id: textId
+        horizontalAlignment: Text.AlignRight
+    }
+    
+    // Emit valueEmitted() signal, which expects an int with Text.AlignRight
+    Component.onCompleted: valueEmitted(Text.AlignRight)
+}
+```
+
+=== Register the enum on the QML side
+In order to register the enumerate to the QML side of the application, you can either use the `qmlRegister` method, or even make use of the `Q_ENUM(<enum_type>)` in order to register the enumerate to the QML side of the application.
+
+=== How to register
+In order to register the enumerate on the QML side, you'll need to create a class inheriting from `QObject`, and make an enumerate inside it such as:
+
+```cpp
+class ErrorLevel : public QObject {
+    Q_OBJECT
+public:
+    explicit ErrorLevel(QObject *po_parent);
+    
+    enum ErrorValue {
+        INFORMATION
+        , WARNING
+        , DEBUG
+        , MESSAGE
+    };
+    
+    Q_ENUM(ErrorValue)
+signal:
+public slots:
+};
+```
+So you are making use of the `ErrorLevel::ErrorValue` on the QML side using this syntax:
+```json
+Component.onCompleted: {
+    console.log(ErrorLevel.WARNING)
+}
+```
+
+==== Registering a non-visual type
+Using the `Q_ENUM` isn't enough, you will also have to call the method named `qmlRegisterUncreatableType`:
+
+```cpp
+int main(int argc, char *argv[])
+{
+    QGuiApplication app(argc, argv);
+
+    qmlRegisterUncreatableType<ErrorLevel>("enumerates.errorlevel", 1, 0, "ErrorLevel"
+                                           , "Can not create ErrorLevel type in QML. Not allowed !");
+```
+This template function is registering the Cpp type in the QML system.
+
+IMPORTANT: The method used in the `main.cpp` is named `qmlRegisterUncreatableType`, that means when we want to create this type in the QML, it will output an error. And in the error you will have, you will have the last parameter you set in the qmlRegisterUncreatableType method.
+
+=== Another way to register
+There is also another way to register the enumerate in the QML side of the application, that means making use of the `Q_GADGET` macro instead of the `Q_OBJECT`:
+
+==== Q_GADGET macro
+The Q_GADGET macro is a lighter version of Q_OBJECT macro for classes that do not inherit from `QObject` but still want to use some of the reflection capabilities offered by the `QMetaObject`. Just like the `Q_OBJECT` macro, it must appear in the private section of the class definition.
+
+NOTE: `Q_GADGET` can have `Q_ENUM`, `Q_INVOKABLE` and `Q_PROPERTY`, still they cannot have neither signals, nor slots.
+
+===== Example
+```cpp
+class ErrorLevel {
+    // Q_OBJECT
+    Q_GADGET
+public:
+    explicit ErrorLevel();
+
+    enum ErrorValue {
+        INFORMATION = 0
+        , WARNING
+        , DEBUG
+        , MESSAGE
+    };
+
+    Q_ENUM(ErrorValue)
+signals:
+};
+```
+You see that in the example above, we removed the `Q_OBJECT` as well as the inheritance between the class and the `QObject` class, instead we are just adding a `Q_GADGET` macro.
+
+NOTE: If you are making use of the `Q_GADGET`, that let your program reduce the overhead, nonetheless, you won't be able to make use of the signal and slot mechanism for this class. And it won't be possible to create object of that in the QML.
+
+IMPORTANT: As you aren't inheriting from `Q_OBJECT`, your constructor doesn't need to take the `QObject *parent` parameter. And also, we need to remove the signals / slot
